@@ -4,25 +4,20 @@
  */
 package org.thunderdog.challegram.ui;
 
-import android.Manifest;
 import android.content.Context;
-import android.content.pm.PackageManager;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.location.Location;
-import android.location.LocationManager;
 import android.text.InputType;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
-
-import androidx.core.content.ContextCompat;
 
 import org.thunderdog.challegram.R;
 import org.thunderdog.challegram.navigation.BackHeaderButton;
@@ -38,195 +33,233 @@ import me.vkryl.core.StringUtils;
 
 public class YaRyadomCreateController extends ViewController<Void> {
 
-  private EditText titleInput, priceInput, roomsInput, areaInput, addressInput, descInput, latInput, lngInput;
-  private TextView publishBtn;
-  private boolean publishing;
+  public interface OnChannelCreatedListener {
+    void onChannelCreated (long chatId, String title);
+  }
+
+  private OnChannelCreatedListener listener;
+  private EditText titleInput, priceInput, roomsInput, areaInput;
+  private EditText addressInput, latInput, lngInput, descriptionInput;
+  private TextView submitBtn;
+  private boolean submitting;
+  private double prefillLat = Double.NaN, prefillLng = Double.NaN;
 
   public YaRyadomCreateController (Context context, Tdlib tdlib) {
     super(context, tdlib);
   }
 
+  public YaRyadomCreateController setListener (OnChannelCreatedListener listener) {
+    this.listener = listener;
+    return this;
+  }
+
+  public YaRyadomCreateController prefillCoords (double lat, double lng) {
+    this.prefillLat = lat;
+    this.prefillLng = lng;
+    return this;
+  }
+
   @Override public int getId () { return R.id.controller_yaryadom; }
   @Override protected int getBackButton () { return BackHeaderButton.TYPE_BACK; }
-  @Override public CharSequence getName () { return "Разместить"; }
+  @Override public CharSequence getName () { return "Разместить объявление"; }
 
   @Override
   protected View onCreateView (Context context) {
+    ScrollView scroll = new ScrollView(context);
+    scroll.setLayoutParams(FrameLayoutFix.newParams(
+      ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    scroll.setBackgroundColor(Theme.backgroundColor());
+    scroll.setFillViewport(true);
+
     LinearLayout root = new LinearLayout(context);
     root.setOrientation(LinearLayout.VERTICAL);
-    root.setLayoutParams(FrameLayoutFix.newParams(
-      ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-    root.setBackgroundColor(Theme.backgroundColor());
-
-    ScrollView scroll = new ScrollView(context);
-    scroll.setLayoutParams(new LinearLayout.LayoutParams(
-      ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-
-    LinearLayout form = new LinearLayout(context);
-    form.setOrientation(LinearLayout.VERTICAL);
     int pad = Screen.dp(16f);
-    form.setPadding(pad, pad, pad, pad);
+    root.setPadding(pad, pad, pad, pad);
 
-    titleInput = addField(form, "Название *", "Квартира у метро");
-    priceInput = addField(form, "Цена (₽/мес)", "35000");
-    roomsInput = addField(form, "Комнат", "2");
-    areaInput = addField(form, "Площадь (м²)", "54");
-    addressInput = addField(form, "Адрес", "ул. Примерная, 1");
-    descInput = addField(form, "Описание", "Светлая квартира, рядом парк");
-    descInput.setMinLines(3);
-    descInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+    root.addView(hint(context,
+      "Создаётся канал с меткой «YR» и форматом YR1. " +
+      "Его можно найти через поиск рядом."));
 
-    TextView geoLabel = new TextView(context);
-    geoLabel.setText("Координаты (или оставьте пустым — возьмём GPS)");
-    geoLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
-    geoLabel.setTextColor(Theme.getColor(ColorId.textLight));
-    geoLabel.setPadding(0, Screen.dp(12f), 0, Screen.dp(4f));
-    form.addView(geoLabel);
+    root.addView(section(context, "Основное"));
+    titleInput = field(context, "Название *", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+    root.addView(titleInput);
+    priceInput = field(context, "Цена, ₽/мес", InputType.TYPE_CLASS_NUMBER);
+    root.addView(priceInput);
+
+    LinearLayout row = new LinearLayout(context);
+    row.setOrientation(LinearLayout.HORIZONTAL);
+    roomsInput = field(context, "Комнат", InputType.TYPE_CLASS_NUMBER);
+    row.addView(roomsInput, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+    areaInput = field(context, "Площадь, м²", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+    LinearLayout.LayoutParams aLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+    aLp.leftMargin = Screen.dp(8f);
+    row.addView(areaInput, aLp);
+    root.addView(row);
+
+    root.addView(section(context, "Геолокация"));
+    addressInput = field(context, "Адрес / район *", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+    root.addView(addressInput);
 
     LinearLayout coords = new LinearLayout(context);
     coords.setOrientation(LinearLayout.HORIZONTAL);
-    latInput = makeCoord(context, "Широта");
-    lngInput = makeCoord(context, "Долгота");
+    latInput = field(context, "Широта *", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
     coords.addView(latInput, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+    lngInput = field(context, "Долгота *", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
     LinearLayout.LayoutParams lngLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
     lngLp.leftMargin = Screen.dp(8f);
     coords.addView(lngInput, lngLp);
-    form.addView(coords);
+    root.addView(coords);
 
-    prefillGps();
+    if (!Double.isNaN(prefillLat)) latInput.setText(String.valueOf(prefillLat));
+    if (!Double.isNaN(prefillLng)) lngInput.setText(String.valueOf(prefillLng));
 
-    scroll.addView(form);
-    root.addView(scroll);
+    root.addView(hint(context, "Координаты из карт. Если geo недоступен — канал создастся без метки, данные останутся в описании YR1."));
 
-    publishBtn = new TextView(context);
-    publishBtn.setText("Опубликовать");
-    publishBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f);
-    publishBtn.setTypeface(Typeface.DEFAULT_BOLD);
-    publishBtn.setGravity(Gravity.CENTER);
-    publishBtn.setTextColor(0xFFFFFFFF);
-    publishBtn.setPadding(pad, Screen.dp(14f), pad, Screen.dp(14f));
-    GradientDrawable bg = new GradientDrawable();
-    bg.setCornerRadius(Screen.dp(12f));
-    bg.setColor(0xFF0088CC);
-    publishBtn.setBackground(bg);
-    LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
+    root.addView(section(context, "Описание"));
+    descriptionInput = field(context, "Условия, этаж, подробности…",
+      InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+    descriptionInput.setMinLines(3);
+    descriptionInput.setMaxLines(6);
+    descriptionInput.setSingleLine(false);
+    descriptionInput.setGravity(Gravity.TOP | Gravity.START);
+    descriptionInput.setImeOptions(EditorInfo.IME_FLAG_NO_ENTER_ACTION);
+    root.addView(descriptionInput);
+
+    submitBtn = primaryBtn(context, "Опубликовать");
+    submitBtn.setOnClickListener(v -> submit());
+    root.addView(submitBtn);
+
+    TextView cancel = secondaryBtn(context, "Отмена");
+    cancel.setOnClickListener(v -> navigateBack());
+    LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(
       ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-    btnLp.setMargins(pad, pad, pad, pad);
-    root.addView(publishBtn, btnLp);
+    cLp.topMargin = Screen.dp(8f);
+    root.addView(cancel, cLp);
 
-    publishBtn.setOnClickListener(v -> publish());
-    return root;
+    scroll.addView(root);
+    return scroll;
   }
 
-  private EditText addField (LinearLayout form, String label, String hint) {
-    TextView l = new TextView(context);
-    l.setText(label);
-    l.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
-    l.setTextColor(Theme.getColor(ColorId.textLight));
-    l.setPadding(0, Screen.dp(10f), 0, Screen.dp(4f));
-    form.addView(l);
-
-    EditText e = new EditText(context);
-    e.setHint(hint);
-    e.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
-    e.setTextColor(Theme.getColor(ColorId.text));
-    e.setHintTextColor(Theme.getColor(ColorId.textLight));
-    e.setBackground(makeInputBg());
-    e.setPadding(Screen.dp(12f), Screen.dp(10f), Screen.dp(12f), Screen.dp(10f));
-    form.addView(e);
-    return e;
-  }
-
-  private EditText makeCoord (Context context, String hint) {
-    EditText e = new EditText(context);
-    e.setHint(hint);
-    e.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
-    e.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f);
-    e.setTextColor(Theme.getColor(ColorId.text));
-    e.setHintTextColor(Theme.getColor(ColorId.textLight));
-    e.setBackground(makeInputBg());
-    e.setPadding(Screen.dp(10f), Screen.dp(10f), Screen.dp(10f), Screen.dp(10f));
-    return e;
-  }
-
-  private GradientDrawable makeInputBg () {
-    GradientDrawable bg = new GradientDrawable();
-    bg.setCornerRadius(Screen.dp(10f));
-    bg.setColor(Theme.getColor(ColorId.filling));
-    return bg;
-  }
-
-  private void prefillGps () {
-    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
-      && ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-      return;
-    }
-    try {
-      LocationManager lm = (LocationManager) context.getSystemService(Context.LOCATION_SERVICE);
-      Location loc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-      if (loc == null) loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-      if (loc != null) {
-        latInput.setText(String.format(java.util.Locale.US, "%.6f", loc.getLatitude()));
-        lngInput.setText(String.format(java.util.Locale.US, "%.6f", loc.getLongitude()));
-      }
-    } catch (Exception ignored) {}
-  }
-
-  private void publish () {
-    if (publishing) return;
-    String title = titleInput.getText().toString().trim();
-    if (StringUtils.isEmpty(title)) {
-      UI.showToast("Укажите название", Toast.LENGTH_SHORT);
-      return;
-    }
+  private void submit () {
+    if (submitting) return;
 
     YaRyadomFormat.ListingData d = new YaRyadomFormat.ListingData();
-    d.title = title;
-    d.price = priceInput.getText().toString().trim();
-    d.rooms = roomsInput.getText().toString().trim();
-    d.area = areaInput.getText().toString().trim();
-    d.address = addressInput.getText().toString().trim();
-    d.description = descInput.getText().toString().trim();
+    d.title = text(titleInput);
+    d.price = text(priceInput);
+    d.rooms = text(roomsInput);
+    d.area = text(areaInput);
+    d.address = text(addressInput);
+    d.description = text(descriptionInput);
 
+    if (StringUtils.isEmpty(d.title)) {
+      UI.showToast("Укажите название", Toast.LENGTH_SHORT);
+      titleInput.requestFocus();
+      return;
+    }
+    if (StringUtils.isEmpty(d.address)) {
+      UI.showToast("Укажите адрес", Toast.LENGTH_SHORT);
+      addressInput.requestFocus();
+      return;
+    }
     try {
-      String latS = latInput.getText().toString().trim();
-      String lngS = lngInput.getText().toString().trim();
-      if (!latS.isEmpty()) d.lat = Double.parseDouble(latS);
-      if (!lngS.isEmpty()) d.lng = Double.parseDouble(lngS);
+      d.lat = Double.parseDouble(text(latInput).replace(',', '.'));
+      d.lng = Double.parseDouble(text(lngInput).replace(',', '.'));
     } catch (Exception e) {
+      UI.showToast("Укажите широту и долготу", Toast.LENGTH_SHORT);
+      return;
+    }
+    if (d.lat < -90 || d.lat > 90 || d.lng < -180 || d.lng > 180) {
       UI.showToast("Некорректные координаты", Toast.LENGTH_SHORT);
       return;
     }
 
-    publishing = true;
-    publishBtn.setText("Публикация…");
-    publishBtn.setEnabled(false);
+    submitting = true;
+    submitBtn.setEnabled(false);
+    submitBtn.setText("Публикация…");
 
-    YaRyadomGeo.createListing(tdlib, d, chatId -> {
-      publishing = false;
-      publishBtn.setText("Опубликовать");
-      publishBtn.setEnabled(true);
-      if (chatId > 0) {
+    YaRyadomGeo.createListingChannel(tdlib, d,
+      chatId -> {
+        submitting = false;
         UI.showToast("Объявление опубликовано", Toast.LENGTH_SHORT);
-        navigateBack();
+        if (listener != null) listener.onChannelCreated(chatId, YaRyadomFormat.buildChannelTitle(d));
+        tdlib.ui().openChat(this, chatId, null);
+      },
+      error -> {
+        submitting = false;
+        submitBtn.setEnabled(true);
+        submitBtn.setText("Опубликовать");
+        UI.showToast(error, Toast.LENGTH_LONG);
       }
-    }, err -> {
-      publishing = false;
-      publishBtn.setText("Опубликовать");
-      publishBtn.setEnabled(true);
-      UI.showToast(err != null ? err : "Ошибка публикации", Toast.LENGTH_LONG);
-    });
+    );
   }
 
-  private TextView makeBtn (String text) {
-    TextView b = new TextView(context);
-    b.setText(text);
-    b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f);
-    b.setTypeface(Typeface.DEFAULT_BOLD);
-    b.setGravity(Gravity.CENTER);
-    b.setPadding(Screen.dp(12f), Screen.dp(10f), Screen.dp(12f), Screen.dp(10f));
+  private static String text (EditText e) {
+    return e.getText() != null ? e.getText().toString().trim() : "";
+  }
+
+  private TextView section (Context c, String t) {
+    TextView v = new TextView(c);
+    v.setText(t);
+    v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
+    v.setTypeface(Typeface.DEFAULT_BOLD);
+    v.setTextColor(Theme.getColor(ColorId.textLight));
+    v.setPadding(0, Screen.dp(12f), 0, Screen.dp(6f));
+    return v;
+  }
+
+  private TextView hint (Context c, String t) {
+    TextView v = new TextView(c);
+    v.setText(t);
+    v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
+    v.setTextColor(Theme.getColor(ColorId.textLight));
+    v.setPadding(0, Screen.dp(4f), 0, Screen.dp(8f));
+    return v;
+  }
+
+  private EditText field (Context c, String hint, int type) {
+    EditText e = new EditText(c);
+    e.setHint(hint);
+    e.setInputType(type);
+    e.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f);
+    e.setTextColor(Theme.getColor(ColorId.text));
+    e.setHintTextColor(Theme.getColor(ColorId.textLight));
+    e.setSingleLine(true);
+    e.setPadding(Screen.dp(14f), Screen.dp(12f), Screen.dp(14f), Screen.dp(12f));
     GradientDrawable bg = new GradientDrawable();
     bg.setCornerRadius(Screen.dp(10f));
+    bg.setColor(Theme.getColor(ColorId.filling));
+    e.setBackground(bg);
+    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+      ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+    lp.bottomMargin = Screen.dp(8f);
+    e.setLayoutParams(lp);
+    return e;
+  }
+
+  private TextView primaryBtn (Context c, String t) {
+    TextView b = new TextView(c);
+    b.setText(t);
+    b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f);
+    b.setTypeface(Typeface.DEFAULT_BOLD);
+    b.setGravity(Gravity.CENTER);
+    b.setTextColor(0xFFFFFFFF);
+    b.setPadding(Screen.dp(16f), Screen.dp(14f), Screen.dp(16f), Screen.dp(14f));
+    GradientDrawable bg = new GradientDrawable();
+    bg.setCornerRadius(Screen.dp(12f));
+    bg.setColor(0xFF0088CC);
+    b.setBackground(bg);
+    return b;
+  }
+
+  private TextView secondaryBtn (Context c, String t) {
+    TextView b = new TextView(c);
+    b.setText(t);
+    b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
+    b.setGravity(Gravity.CENTER);
+    b.setTextColor(Theme.getColor(ColorId.text));
+    b.setPadding(Screen.dp(16f), Screen.dp(12f), Screen.dp(16f), Screen.dp(12f));
+    GradientDrawable bg = new GradientDrawable();
+    bg.setCornerRadius(Screen.dp(12f));
     bg.setColor(Theme.getColor(ColorId.filling));
     b.setBackground(bg);
     return b;
