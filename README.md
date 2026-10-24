@@ -15,8 +15,6 @@
 
 ## Модель данных (YR1)
 
-Объявление хранится как **supergroup-канал** с `ChatLocation` и описанием в формате:
-
 ```
 #ЯРядом
 YR1|title=...|price=...|rooms=...|area=...|address=...|lat=...|lng=...|desc=...
@@ -24,40 +22,38 @@ YR1|title=...|price=...|rooms=...|area=...|address=...|lat=...|lng=...|desc=...
 
 Название канала: `YR · {title}`
 
-## Основные компоненты
+## Что уже есть в этом репозитории
 
-| Файл | Назначение |
-|------|------------|
-| `YaRyadomController.java` | Главный экран поиска и списка |
-| `YaRyadomCreateController.java` | Форма размещения объявления |
-| `YaRyadomFavoritesController.java` | Экран избранного |
-| `YaRyadomFormat.java` | Парсер и билдер формата YR1 |
-| `YaRyadomGeo.java` | TDLib nearby, создание канала, кэш, избранное |
+| Путь | Статус |
+|------|--------|
+| `app/.../YaRyadomFormat.java` | ✅ |
+| `app/.../YaRyadomFavorites.java` | ✅ |
+| `app/.../ids_yaryadom.xml` | ✅ |
+| `docs/YA_RYADOM_INTEGRATION.md` | ✅ |
+| `docs/PATCH_YARYADOM_DRAWER.md` | ✅ |
+| `docs/RESTORE_AND_PATCH.sh` | ✅ |
+| `YaRyadomController.java` | ⏳ в исходном форке |
+| `YaRyadomCreateController.java` | ⏳ в исходном форке |
+| `YaRyadomGeo.java` | ⏳ в исходном форке |
+| Полный исходный код Telegram X | ⏳ в исходном форке |
 
-## Статус
+## Полный перенос кода (выполнить локально)
 
-**Рабочий MVP** (октябрь 2026).
+Исходный рабочий код с историей находится в  
+**https://github.com/stephanvoznyak-dot/telegram-x**
 
-Реализовано:
-- Пункт «Я рядом» в боковом меню
-- Поиск каналов с геолокацией + кэш 90 с
-- Фильтр «только YR»
-- Форма создания объявления с fallback без geo
-- Избранное через сообщение в Saved Messages (debounce)
-- Кнопка «Написать» автору
+Чтобы сделать этот репозиторий полной копией:
 
-Известные ограничения:
-- Каждое объявление = отдельный канал (ограничение текущей модели)
-- Nearby зависит от политики TDLib и радиуса сервера Telegram
-- UI пока на стандартных Android View (планируется переход на компоненты TGX)
+```bash
+git clone --recursive https://github.com/stephanvoznyak-dot/telegram-x.git tgx-source
+cd tgx-source
+git remote add clean https://github.com/stephanvoznyak-dot/telegram-x-ya-ryadom.git
+git push clean main --force
+```
 
-## Сборка
+После этого `telegram-x-ya-ryadom` станет полноценным репозиторием приложения.
 
-Требования совпадают с оригинальным Telegram X:
-
-- JDK 17+ (рекомендуется 21/25)
-- Android SDK + NDK
-- Клонирование с `--recursive`
+## Сборка (после полного переноса)
 
 ```bash
 git clone --recursive https://github.com/stephanvoznyak-dot/telegram-x-ya-ryadom.git
@@ -66,19 +62,17 @@ cd telegram-x-ya-ryadom
 ./gradlew assembleLatestUniversalDebug
 ```
 
-Подробные инструкции по сборке — в оригинальном README Telegram X.
-
 ## Документация
 
 - [Интеграция «Я рядом»](docs/YA_RYADOM_INTEGRATION.md)
 - [Патч бокового меню](docs/PATCH_YARYADOM_DRAWER.md)
+- [Инструкция по переносу](docs/HOW_TO_IMPORT_CODE.md)
 
 ## Лицензия
 
-Код Telegram X распространяется под **GNU GPL v3.0**.  
-Все изменения, связанные с «Я рядом», также подчиняются этой лицензии.
+GNU GPL v3.0 (как у Telegram X).
 
 ## Связанные репозитории
 
-- Исходный форк с историей разработки: [telegram-x](https://github.com/stephanvoznyak-dot/telegram-x)
-- Официальный upstream: [TGX-Android/Telegram-X](https://github.com/TGX-Android/Telegram-X)
+- Рабочий форк с полной историей: [telegram-x](https://github.com/stephanvoznyak-dot/telegram-x)
+- Upstream: [TGX-Android/Telegram-X](https://github.com/TGX-Android/Telegram-X)
